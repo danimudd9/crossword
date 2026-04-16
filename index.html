@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Crossword Engine</title>
+
+<style>
+body {
+  font-family: Arial;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #f4f4f4;
+  padding: 20px;
+}
+
+.wrap {
+  display: flex;
+  gap: 30px;
+}
+
+.grid {
+  display: grid;
+  gap: 2px;
+}
+
+.cell {
+  width: 42px;
+  height: 42px;
+  background: white;
+  border: 1px solid #aaa;
+  position: relative;
+}
+
+.cell.black {
+  background: black;
+}
+
+.cell input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  text-align: center;
+  font-size: 18px;
+  text-transform: uppercase;
+  background: transparent;
+}
+
+.num {
+  position: absolute;
+  font-size: 10px;
+  top: 2px;
+  left: 3px;
+}
+
+.panel {
+  width: 250px;
+}
+
+button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Brooklyn's personal puzzles</h2>
+
+<div class="panel">
+  <textarea id="words">CAT,DOG,TREE,CAR,STAR,ART,RAT,TEA</textarea>
+  <button onclick="generate()">Generate Crossword</button>
+</div>
+
+<div class="wrap">
+  <div id="grid" class="grid"></div>
+</div>
+
+<script>
+const SIZE = 10;
+
+let grid = [];
+let placedWords = [];
+
+function createGrid() {
+  grid = Array.from({ length: SIZE }, () =>
+    Array.from({ length: SIZE }, () => "")
+  );
+}
+
+/* ---------------- CHECK IF WORD FITS ---------------- */
+function canPlace(word, r, c, dir) {
+  let intersects = 0;
+
+  for (let i = 0; i < word.length; i++) {
+    let rr = r + (dir === "down" ? i : 0);
+    let cc = c + (dir === "across" ? i : 0);
+
+    if (rr >= SIZE || cc >= SIZE) return false;
+
+    let existing = grid[rr][cc];
+
+    if (existing === "") continue;
+
+    if (existing !== word[i]) return false;
+
+    intersects++;
+  }
+
+  return intersects > 0; // MUST intersect at least one letter
+}
+
+/* ---------------- PLACE WORD ---------------- */
+function place(word, r, c, dir) {
+  for (let i = 0; i < word.length; i++) {
+    let rr = r + (dir === "down" ? i : 0);
+    let cc = c + (dir === "across" ? i : 0);
+    grid[rr][cc] = word[i];
+  }
+}
+
+/* ---------------- FIND BEST INTERSECTION ---------------- */
+function findSpot(word) {
+  for (let placed of placedWords) {
+    for (let i = 0; i < placed.word.length; i++) {
+      for (let j = 0; j < word.length; j++) {
+
+        if (placed.word[i] !== word[j]) continue;
+
+        let r = placed.r;
+        let c = placed.c;
+
+        if (placed.dir === "across") {
+          let rr = r - j;
+          let cc = c + i;
+
+          if (canPlace(word, rr, cc, "down")) {
+            return { r: rr, c: cc, dir: "down" };
+          }
+        }
+
+        if (placed.dir === "down") {
+          let rr = r + i;
+          let cc = c - j;
+
+          if (canPlace(word, rr, cc, "across")) {
+            return { r: rr, c: cc, dir: "across" };
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/* ---------------- GENERATE ---------------- */
+function generate() {
+  createGrid();
+  placedWords = [];
+
+  let words = document.getElementById("words")
+    .value
+    .split(",")
+    .map(w => w.trim().toUpperCase())
+    .sort((a,b) => b.length - a.length);
+
+  // place first word in center
+  let first = words[0];
+  let startR = Math.floor(SIZE / 2);
+  let startC = Math.floor((SIZE - first.length) / 2);
+
+  for (let i = 0; i < first.length; i++) {
+    grid[startR][startC + i] = first[i];
+  }
+
+  placedWords.push({
+    word: first,
+    r: startR,
+    c: startC,
+    dir: "across"
+  });
+
+  // place remaining words via intersections
+  for (let k = 1; k < words.length; k++) {
+    let w = words[k];
+
+    let spot = findSpot(w);
+
+    if (spot) {
+      place(w, spot.r, spot.c, spot.dir);
+      placedWords.push({ word: w, ...spot });
+    }
+  }
+
+  render();
+}
+
+/* ---------------- RENDER ---------------- */
+function render() {
+  const gridEl = document.getElementById("grid");
+  gridEl.innerHTML = "";
+  gridEl.style.gridTemplateColumns = `repeat(${SIZE}, 42px)`;
+
+  let numbers = {};
+  let num = 1;
+
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+
+      if (!grid[r][c]) {
+        let black = document.createElement("div");
+        black.className = "cell black";
+        gridEl.appendChild(black);
+        continue;
+      }
+
+      let key = `${r}-${c}`;
+
+      let isStart =
+        (c === 0 || !grid[r][c - 1]) && (c + 1 < SIZE && grid[r][c + 1]) ||
+        (r === 0 || !grid[r - 1][c]) && (r + 1 < SIZE && grid[r + 1][c]);
+
+      if (isStart) numbers[key] = num++;
+
+      let cell = document.createElement("div");
+      cell.className = "cell";
+
+      if (numbers[key]) {
+        let n = document.createElement("div");
+        n.className = "num";
+        n.textContent = numbers[key];
+        cell.appendChild(n);
+      }
+
+      let input = document.createElement("input");
+      input.maxLength = 1;
+      input.dataset.r = r;
+      input.dataset.c = c;
+
+      cell.appendChild(input);
+      gridEl.appendChild(cell);
+    }
+  }
+}
+</script>
+
+</body>
+</html>
